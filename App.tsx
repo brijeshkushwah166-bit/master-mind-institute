@@ -590,6 +590,7 @@ export default function App() {
       <footer className="footer">
         <h3>MASTER MIND INSTITUTE</h3>
         <p>Dream Big... Achieve More...</p>
+        <p><strong>Founder: Tarun Sharma</strong></p>
         <small>© {new Date().getFullYear()} Master Mind Institute. All rights reserved.</small>
       </footer>
 
