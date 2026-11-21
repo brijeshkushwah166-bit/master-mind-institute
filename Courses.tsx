@@ -11,6 +11,7 @@ type Course = {
   subject: string | null;
   course_type: 'free' | 'paid';
   fee: number;
+  image_url: string | null;
   is_active: boolean;
 };
 
@@ -27,10 +28,11 @@ const styles = {
   card: {
     background: '#fff',
     border: '1px solid #e5e7eb',
-    borderRadius: 14,
+    borderRadius: 16,
     padding: 16,
     marginBottom: 14,
-    color: '#172554'
+    color: '#172554',
+    overflow: 'hidden'
   } as const,
   button: {
     background: '#102c59',
@@ -68,6 +70,18 @@ export default function Courses() {
   const [subject, setSubject] = useState('');
   const [courseType, setCourseType] = useState<'free' | 'paid'>('free');
   const [fee, setFee] = useState('0');
+  const [courseImage, setCourseImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState('');
+
+  useEffect(() => {
+    if (!courseImage) {
+      setImagePreview('');
+      return;
+    }
+    const previewUrl = URL.createObjectURL(courseImage);
+    setImagePreview(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [courseImage]);
 
   async function loadData() {
     if (!supabase) {
@@ -77,13 +91,14 @@ export default function Courses() {
     }
 
     setLoading(true);
-
     const { data: sessionData } = await supabase.auth.getSession();
     const user = sessionData.session?.user;
 
     if (!user) {
-      setMessage('Please login to view courses.');
+      setUserId('');
+      setCourses([]);
       setLoading(false);
+      setMessage('Please login to view courses.');
       return;
     }
 
@@ -111,18 +126,13 @@ export default function Courses() {
 
     setCourses((courseData || []) as Course[]);
 
-    const enrollmentQuery = supabase
+    const { data: enrollmentData, error: enrollmentError } = await supabase
       .from('enrollments')
       .select('*')
       .order('created_at', { ascending: false });
 
-    const { data: enrollmentData, error: enrollmentError } = await enrollmentQuery;
-
-    if (enrollmentError) {
-      setMessage(enrollmentError.message);
-    } else {
-      setEnrollments((enrollmentData || []) as Enrollment[]);
-    }
+    if (enrollmentError) setMessage(enrollmentError.message);
+    else setEnrollments((enrollmentData || []) as Enrollment[]);
 
     setLoading(false);
   }
@@ -144,9 +154,8 @@ export default function Courses() {
       p_course_id: course.id
     });
 
-    if (error) {
-      setMessage(error.message);
-    } else {
+    if (error) setMessage(error.message);
+    else {
       setMessage(
         course.course_type === 'free'
           ? 'Free course enrollment successful!'
@@ -160,8 +169,7 @@ export default function Courses() {
 
   async function addCourse(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
-    if (!supabase) return;
+    if (!supabase || !userId) return;
 
     if (!title.trim()) {
       setMessage('Please enter course title.');
@@ -175,8 +183,42 @@ export default function Courses() {
       return;
     }
 
+    if (courseImage && !['image/jpeg', 'image/png', 'image/webp'].includes(courseImage.type)) {
+      setMessage('Please choose a JPG, PNG or WEBP image.');
+      return;
+    }
+
+    if (courseImage && courseImage.size > 5 * 1024 * 1024) {
+      setMessage('Course image must be smaller than 5 MB.');
+      return;
+    }
+
     setSaving(true);
     setMessage('');
+
+    let imageUrl: string | null = null;
+
+    if (courseImage) {
+      const safeName = courseImage.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const imagePath = `${userId}/${Date.now()}-${safeName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('course-images')
+        .upload(imagePath, courseImage, {
+          upsert: false,
+          contentType: courseImage.type
+        });
+
+      if (uploadError) {
+        setMessage(`Image upload failed: ${uploadError.message}. Please run the Course Images SQL setup first.`);
+        setSaving(false);
+        return;
+      }
+
+      imageUrl = supabase.storage
+        .from('course-images')
+        .getPublicUrl(imagePath).data.publicUrl;
+    }
 
     const { error } = await supabase.from('courses').insert({
       title: title.trim(),
@@ -185,6 +227,7 @@ export default function Courses() {
       subject: subject.trim(),
       course_type: courseType,
       fee: amount,
+      image_url: imageUrl,
       is_active: true,
       created_by: userId
     });
@@ -192,12 +235,13 @@ export default function Courses() {
     if (error) {
       setMessage(error.message);
     } else {
-      setMessage('Course added successfully!');
+      setMessage('Course published successfully!');
       setTitle('');
       setDescription('');
       setSubject('');
       setCourseType('free');
       setFee('0');
+      setCourseImage(null);
       await loadData();
     }
 
@@ -215,9 +259,8 @@ export default function Courses() {
       .update({ status })
       .eq('id', id);
 
-    if (error) {
-      setMessage(error.message);
-    } else {
+    if (error) setMessage(error.message);
+    else {
       setMessage(`Enrollment ${status} successfully.`);
       await loadData();
     }
@@ -228,17 +271,20 @@ export default function Courses() {
   async function toggleCourse(course: Course) {
     if (!supabase) return;
 
+    setSaving(true);
+
     const { error } = await supabase
       .from('courses')
       .update({ is_active: !course.is_active })
       .eq('id', course.id);
 
-    if (error) {
-      setMessage(error.message);
-    } else {
+    if (error) setMessage(error.message);
+    else {
       setMessage(course.is_active ? 'Course deactivated.' : 'Course activated.');
       await loadData();
     }
+
+    setSaving(false);
   }
 
   function statusColor(status: string) {
@@ -247,13 +293,11 @@ export default function Courses() {
     return '#b45309';
   }
 
-  if (loading) {
-    return <div style={{ padding: 20 }}>Loading courses...</div>;
-  }
+  if (loading) return <div style={{ padding: 20 }}>Loading courses...</div>;
 
   if (!userId) {
     return (
-      <section style={{ padding: 20 }}>
+      <section style={{ padding: 20, color: '#102c59' }}>
         <h2>Our Courses</h2>
         <p>{message || 'Please login to view courses.'}</p>
       </section>
@@ -270,21 +314,18 @@ export default function Courses() {
       </div>
 
       {message && (
-        <div
-          role="status"
-          style={{
-            ...styles.card,
-            background: '#f8fafc',
-            overflowWrap: 'anywhere'
-          }}
-        >
+        <div role="status" style={{
+          ...styles.card,
+          background: '#f8fafc',
+          overflowWrap: 'anywhere'
+        }}>
           {message}
         </div>
       )}
 
       {isAdmin && (
         <div style={styles.card}>
-          <h3>Add New Course</h3>
+          <h3 style={{ marginTop: 0 }}>Publish New Course</h3>
 
           <form onSubmit={addCourse}>
             <label>Course Title</label>
@@ -295,6 +336,28 @@ export default function Courses() {
               placeholder="Example: Class 10th Complete Course"
               required
             />
+
+            <label>Course Cover Photo (JPG / PNG / WEBP, max 5 MB)</label>
+            <input
+              style={styles.input}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={e => setCourseImage(e.target.files?.[0] || null)}
+            />
+
+            {imagePreview && (
+              <img
+                src={imagePreview}
+                alt="Course preview"
+                style={{
+                  width: '100%',
+                  maxHeight: 210,
+                  objectFit: 'cover',
+                  borderRadius: 12,
+                  marginBottom: 14
+                }}
+              />
+            )}
 
             <label>Description</label>
             <textarea
@@ -350,7 +413,7 @@ export default function Courses() {
             )}
 
             <button style={styles.button} disabled={saving} type="submit">
-              {saving ? 'Please wait...' : 'Add Course'}
+              {saving ? 'Uploading & Publishing...' : 'Publish Course'}
             </button>
           </form>
         </div>
@@ -369,15 +432,47 @@ export default function Courses() {
 
         return (
           <article key={course.id} style={styles.card}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-              <h3 style={{ marginTop: 0 }}>{course.title}</h3>
-              <span
+            {course.image_url ? (
+              <img
+                src={course.image_url}
+                alt={course.title}
                 style={{
-                  color: course.course_type === 'free' ? '#15803d' : '#b45309',
-                  fontWeight: 700,
-                  whiteSpace: 'nowrap'
+                  width: '100%',
+                  height: 190,
+                  objectFit: 'cover',
+                  borderRadius: 11,
+                  marginBottom: 14
                 }}
-              >
+              />
+            ) : (
+              <div style={{
+                width: '100%',
+                height: 120,
+                borderRadius: 11,
+                marginBottom: 14,
+                background: 'linear-gradient(135deg,#102c59,#d4a72c)',
+                display: 'grid',
+                placeItems: 'center',
+                color: '#fff',
+                fontSize: 24,
+                fontWeight: 800
+              }}>
+                MASTER MIND INSTITUTE
+              </div>
+            )}
+
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              gap: 10,
+              alignItems: 'flex-start'
+            }}>
+              <h3 style={{ marginTop: 0, marginBottom: 8 }}>{course.title}</h3>
+              <span style={{
+                color: course.course_type === 'free' ? '#15803d' : '#b45309',
+                fontWeight: 700,
+                whiteSpace: 'nowrap'
+              }}>
                 {course.course_type === 'free' ? 'FREE' : `₹${course.fee}`}
               </span>
             </div>
@@ -405,6 +500,7 @@ export default function Courses() {
             {isAdmin && (
               <button
                 style={{ ...styles.button, background: '#64748b', marginLeft: 8 }}
+                disabled={saving}
                 onClick={() => void toggleCourse(course)}
               >
                 Deactivate
