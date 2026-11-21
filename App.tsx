@@ -547,14 +547,10 @@ export default function App() {
       )}
 
       {page === 'live' && (
-        <main className="main pageMain">
-          <div className="sectionHead">
-            <div>
-              <span className="eyebrow dark">MASTER MIND LIVE</span>
-              <h2>Live Classes</h2>
-              <p>Attend live classes and learn with your teachers.</p>
-            </div>
-          </div>
+  <main className="main pageMain">
+    <LiveClasses />
+  </main>
+)}
 
           <div className="resource liveComing">
             <div className="resourceIcon"><Video size={32} /></div>
