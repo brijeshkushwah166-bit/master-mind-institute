@@ -1,3 +1,4 @@
+
 import LiveClasses from './LiveClasses';
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
@@ -5,7 +6,7 @@ import {
   BookOpen, GraduationCap, FileText, Video, Search,
   LogIn, LogOut, Upload, Plus, Trash2, ExternalLink,
   Globe, ShieldCheck, Download, Pencil, Home, User,
-  Layers, ChevronRight, Sparkles, X, Play, Menu
+  Layers, ChevronRight, Sparkles, X
 } from 'lucide-react';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
 import Courses from './Courses';
@@ -293,7 +294,6 @@ export default function App() {
 
   return (
     <div className="app premiumApp">
-
       <header className="topbar">
         <a className="brand" href="#" onClick={e => {
           e.preventDefault();
@@ -546,18 +546,10 @@ export default function App() {
         </main>
       )}
 
+      {/* Live Classes: पुराने Coming Soon सेक्शन को हटा दिया गया है */}
       {page === 'live' && (
-  <main className="main pageMain">
-    <LiveClasses />
-  </main>
-)}
-
-          <div className="resource liveComing">
-            <div className="resourceIcon"><Video size={32} /></div>
-            <h3>Live Classes Coming Soon</h3>
-            <p>Live lectures will be available here.</p>
-            <span className="tag">COMING SOON</span>
-          </div>
+        <main className="main pageMain">
+          <LiveClasses />
         </main>
       )}
 
