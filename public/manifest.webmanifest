@@ -1,0 +1,14 @@
+
+{
+  "id": "/",
+  "name": "Master Mind Institute",
+  "short_name": "Master Mind",
+  "description": "Master Mind Institute - Classes 9th to 12th",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0B1F3A",
+  "theme_color": "#0B1F3A",
+  "lang": "en"
+}
