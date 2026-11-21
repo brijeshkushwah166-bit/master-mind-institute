@@ -4,8 +4,8 @@ import type { FormEvent } from 'react';
 import {
   BookOpen, GraduationCap, FileText, Video, Search,
   LogIn, LogOut, Upload, Plus, Trash2, ExternalLink,
-  Globe, ShieldCheck, Menu, X, Download, Pencil,
-  Home, User, Layers, Bell, ChevronRight, Sparkles
+  Globe, ShieldCheck, Download, Pencil, Home, User,
+  Layers, ChevronRight, Sparkles, X, Play, Menu
 } from 'lucide-react';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
 import Courses from './Courses';
@@ -29,6 +29,8 @@ type Profile = {
   role: string;
 };
 
+type Page = 'home' | 'courses' | 'study' | 'live' | 'profile';
+
 export default function App() {
   const [lang, setLang] = useState<'en' | 'hi'>('en');
   const [session, setSession] = useState<any>(null);
@@ -36,8 +38,7 @@ export default function App() {
   const [materials, setMaterials] = useState<Material[]>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
-  const [page, setPage] = useState('home');
-
+  const [page, setPage] = useState<Page>('home');
   const [query, setQuery] = useState('');
   const [cls, setCls] = useState('all');
   const [kind, setKind] = useState('all');
@@ -58,11 +59,10 @@ export default function App() {
 
   const [file, setFile] = useState<File | null>(null);
 
+  const hindi = lang === 'hi';
   const isAdmin =
     profile?.role === 'admin' ||
     profile?.role === 'super_admin';
-
-  const hindi = lang === 'hi';
 
   useEffect(() => {
     if (!supabase) return;
@@ -111,7 +111,7 @@ export default function App() {
   }
 
   useEffect(() => {
-    loadMaterials();
+    void loadMaterials();
   }, []);
 
   const filtered = useMemo(() => {
@@ -182,9 +182,9 @@ export default function App() {
     setEditing(null);
   }
 
-  async function saveMaterial(e: FormEvent) {
+  async function saveMaterial(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!supabase || !isAdmin) return;
+    if (!supabase || !isAdmin || !session?.user) return;
 
     setBusy(true);
     setMessage('');
@@ -220,13 +220,9 @@ export default function App() {
     };
 
     const result = editing
-      ? await supabase
-          .from('study_materials')
-          .update(payload)
-          .eq('id', editing.id)
-      : await supabase
-          .from('study_materials')
-          .insert(payload);
+      ? await supabase.from('study_materials')
+          .update(payload).eq('id', editing.id)
+      : await supabase.from('study_materials').insert(payload);
 
     setBusy(false);
 
@@ -242,11 +238,8 @@ export default function App() {
   }
 
   async function deleteMaterial(m: Material) {
-    if (
-      !supabase ||
-      !isAdmin ||
-      !window.confirm(`Delete "${m.title}"?`)
-    ) return;
+    if (!supabase || !isAdmin ||
+      !window.confirm(`Delete "${m.title}"?`)) return;
 
     const { error } = await supabase
       .from('study_materials')
@@ -284,7 +277,8 @@ export default function App() {
   const labels = {
     home: hindi ? 'होम' : 'Home',
     courses: hindi ? 'कोर्स' : 'Courses',
-    study: hindi ? 'स्टडी मटेरियल' : 'Study',
+    study: hindi ? 'स्टडी' : 'Study',
+    live: hindi ? 'लाइव' : 'Live',
     profile: hindi ? 'प्रोफाइल' : 'Profile'
   };
 
@@ -301,7 +295,10 @@ export default function App() {
     <div className="app premiumApp">
 
       <header className="topbar">
-        <a className="brand" href="#" onClick={() => setPage('home')}>
+        <a className="brand" href="#" onClick={e => {
+          e.preventDefault();
+          setPage('home');
+        }}>
           <div className="logoMark">
             <img src="/logo.png" alt="Master Mind Institute" />
           </div>
@@ -312,28 +309,21 @@ export default function App() {
         </a>
 
         <nav>
-          <button
-            className="plain lang"
-            onClick={() => setLang(lang === 'en' ? 'hi' : 'en')}
-          >
+          <button className="plain lang"
+            onClick={() => setLang(lang === 'en' ? 'hi' : 'en')}>
             <Globe size={17} />
             {hindi ? 'English' : 'हिन्दी'}
           </button>
 
           {session ? (
-            <>
-              <span className="userName">
-                {profile?.full_name || session.user.email}
-              </span>
-              <button className="outline" onClick={signOut}>
-                <LogOut size={16} />
-                {hindi ? 'लॉगआउट' : 'Logout'}
-              </button>
-            </>
+            <button className="outline" onClick={signOut}>
+              <LogOut size={16} />
+              Logout
+            </button>
           ) : (
             <button className="gold" onClick={() => setAuthOpen(true)}>
               <LogIn size={16} />
-              {hindi ? 'लॉगिन' : 'Login'}
+              Login
             </button>
           )}
         </nav>
@@ -350,16 +340,12 @@ export default function App() {
         <>
           <section className="hero premiumHero">
             <div className="heroContent">
-              <span className="eyebrow">
-                ✦ DREAM BIG · ACHIEVE MORE
-              </span>
-
+              <span className="eyebrow">✦ DREAM BIG · ACHIEVE MORE</span>
               <h1>
                 Learn Today.
                 <br />
                 <span>Lead Tomorrow.</span>
               </h1>
-
               <p>
                 {hindi
                   ? 'कक्षा 9वीं से 12वीं तक शानदार पढ़ाई और बेहतर भविष्य की तैयारी।'
@@ -367,17 +353,10 @@ export default function App() {
               </p>
 
               <div className="heroButtons">
-                <button
-                  className="gold"
-                  onClick={() => setPage('courses')}
-                >
+                <button className="gold" onClick={() => setPage('courses')}>
                   Explore Courses <ChevronRight size={18} />
                 </button>
-
-                <button
-                  className="outline"
-                  onClick={() => setPage('study')}
-                >
+                <button className="outline" onClick={() => setPage('study')}>
                   Study Material
                 </button>
               </div>
@@ -386,15 +365,6 @@ export default function App() {
                 <span><ShieldCheck size={16} /> Expert Learning</span>
                 <span><BookOpen size={16} /> Notes & DPP</span>
               </div>
-            </div>
-
-            <div className="heroGraphic">
-              <div className="orb">
-                <GraduationCap size={86} />
-                <span>MM</span>
-              </div>
-              <div className="orbit orbit1"></div>
-              <div className="orbit orbit2"></div>
             </div>
           </section>
 
@@ -408,14 +378,10 @@ export default function App() {
 
             <div className="classGrid">
               {['9', '10', '11', '12'].map(n => (
-                <button
-                  key={n}
-                  className="classTile"
-                  onClick={() => {
-                    setCls(n);
-                    setPage('study');
-                  }}
-                >
+                <button key={n} className="classTile" onClick={() => {
+                  setCls(n);
+                  setPage('study');
+                }}>
                   <span>CLASS</span>
                   <b>{n}<sup>th</sup></b>
                   <ChevronRight size={18} />
@@ -435,6 +401,13 @@ export default function App() {
                 <div className="featureIcon"><FileText /></div>
                 <h3>Study Material</h3>
                 <p>Notes, DPP, PYQ and lectures</p>
+                <ChevronRight />
+              </button>
+
+              <button className="featureCard" onClick={() => setPage('live')}>
+                <div className="featureIcon"><Video /></div>
+                <h3>Live Classes</h3>
+                <p>Learn with your teachers</p>
                 <ChevronRight />
               </button>
 
@@ -471,15 +444,11 @@ export default function App() {
             </div>
 
             {isAdmin && (
-              <button
-                className="gold"
-                onClick={() => {
-                  resetForm();
-                  setAdminOpen(true);
-                }}
-              >
-                <Plus size={18} />
-                Upload Material
+              <button className="gold" onClick={() => {
+                resetForm();
+                setAdminOpen(true);
+              }}>
+                <Plus size={18} /> Upload Material
               </button>
             )}
           </div>
@@ -487,20 +456,16 @@ export default function App() {
           <div className="filters">
             <div className="search">
               <Search size={18} />
-              <input
-                value={query}
+              <input value={query}
                 onChange={e => setQuery(e.target.value)}
-                placeholder="Search notes, subject or topic..."
-              />
+                placeholder="Search notes, subject or topic..." />
             </div>
 
             <div className="tabs">
               {['all', 'lecture', 'notes', 'dpp', 'pyq', 'other'].map(k => (
-                <button
-                  key={k}
+                <button key={k}
                   className={kind === k ? 'selected' : ''}
-                  onClick={() => setKind(k)}
-                >
+                  onClick={() => setKind(k)}>
                   {k.toUpperCase()}
                 </button>
               ))}
@@ -509,11 +474,9 @@ export default function App() {
 
           <div className="classGrid">
             {['all', '9', '10', '11', '12'].map(n => (
-              <button
-                key={n}
+              <button key={n}
                 className={cls === n ? 'classTile active' : 'classTile'}
-                onClick={() => setCls(n)}
-              >
+                onClick={() => setCls(n)}>
                 {n === 'all' ? 'All Classes' : `Class ${n}`}
               </button>
             ))}
@@ -583,6 +546,25 @@ export default function App() {
         </main>
       )}
 
+      {page === 'live' && (
+        <main className="main pageMain">
+          <div className="sectionHead">
+            <div>
+              <span className="eyebrow dark">MASTER MIND LIVE</span>
+              <h2>Live Classes</h2>
+              <p>Attend live classes and learn with your teachers.</p>
+            </div>
+          </div>
+
+          <div className="resource liveComing">
+            <div className="resourceIcon"><Video size={32} /></div>
+            <h3>Live Classes Coming Soon</h3>
+            <p>Live lectures will be available here.</p>
+            <span className="tag">COMING SOON</span>
+          </div>
+        </main>
+      )}
+
       {page === 'profile' && (
         <main className="main pageMain">
           <div className="profileCard">
@@ -618,23 +600,30 @@ export default function App() {
       )}
 
       <footer className="footer">
-        <img src="/logo.png" alt="Master Mind Institute" />
         <h3>MASTER MIND INSTITUTE</h3>
         <p>Dream Big... Achieve More...</p>
         <small>© {new Date().getFullYear()} Master Mind Institute. All rights reserved.</small>
       </footer>
 
       <nav className="bottomNav">
-        <button className={page === 'home' ? 'active' : ''} onClick={() => setPage('home')}>
+        <button className={page === 'home' ? 'active' : ''}
+          onClick={() => setPage('home')}>
           <Home size={20} /><span>{labels.home}</span>
         </button>
-        <button className={page === 'courses' ? 'active' : ''} onClick={() => setPage('courses')}>
+        <button className={page === 'courses' ? 'active' : ''}
+          onClick={() => setPage('courses')}>
           <Layers size={20} /><span>{labels.courses}</span>
         </button>
-        <button className={page === 'study' ? 'active' : ''} onClick={() => setPage('study')}>
+        <button className={page === 'study' ? 'active' : ''}
+          onClick={() => setPage('study')}>
           <BookOpen size={20} /><span>{labels.study}</span>
         </button>
-        <button className={page === 'profile' ? 'active' : ''} onClick={() => setPage('profile')}>
+        <button className={page === 'live' ? 'active' : ''}
+          onClick={() => setPage('live')}>
+          <Video size={20} /><span>{labels.live}</span>
+        </button>
+        <button className={page === 'profile' ? 'active' : ''}
+          onClick={() => setPage('profile')}>
           <User size={20} /><span>{labels.profile}</span>
         </button>
       </nav>
@@ -655,17 +644,15 @@ export default function App() {
                   <input name="name" required placeholder="Your name" />
                 </label>
               )}
-
               <label>
                 Email Address
                 <input name="email" type="email" required placeholder="you@example.com" />
               </label>
-
               <label>
                 Password
-                <input name="password" type="password" minLength={6} required placeholder="At least 6 characters" />
+                <input name="password" type="password" minLength={6}
+                  required placeholder="At least 6 characters" />
               </label>
-
               <button className="gold full" disabled={busy}>
                 {busy ? 'Please wait...' : signup ? 'Create Account' : 'Sign In'}
               </button>
@@ -691,28 +678,21 @@ export default function App() {
             <form onSubmit={saveMaterial} className="uploadForm">
               <label>
                 Title
-                <input
-                  required
-                  value={form.title}
-                  onChange={e => setForm({ ...form, title: e.target.value })}
-                />
+                <input required value={form.title}
+                  onChange={e => setForm({ ...form, title: e.target.value })} />
               </label>
 
               <label>
                 Description
-                <textarea
-                  value={form.description}
-                  onChange={e => setForm({ ...form, description: e.target.value })}
-                />
+                <textarea value={form.description}
+                  onChange={e => setForm({ ...form, description: e.target.value })} />
               </label>
 
               <div className="formRow">
                 <label>
                   Class
-                  <select
-                    value={form.class_level}
-                    onChange={e => setForm({ ...form, class_level: e.target.value })}
-                  >
+                  <select value={form.class_level}
+                    onChange={e => setForm({ ...form, class_level: e.target.value })}>
                     {['9', '10', '11', '12'].map(n => (
                       <option value={n} key={n}>Class {n}</option>
                     ))}
@@ -721,23 +701,18 @@ export default function App() {
 
                 <label>
                   Subject
-                  <input
-                    required
-                    value={form.subject}
-                    onChange={e => setForm({ ...form, subject: e.target.value })}
-                  />
+                  <input required value={form.subject}
+                    onChange={e => setForm({ ...form, subject: e.target.value })} />
                 </label>
               </div>
 
               <label>
                 Material Type
-                <select
-                  value={form.material_type}
+                <select value={form.material_type}
                   onChange={e => setForm({
                     ...form,
                     material_type: e.target.value as Material['material_type']
-                  })}
-                >
+                  })}>
                   <option value="lecture">Video Lecture</option>
                   <option value="notes">Notes</option>
                   <option value="dpp">DPP</option>
@@ -748,21 +723,15 @@ export default function App() {
 
               <label>
                 Video / Resource URL
-                <input
-                  type="url"
-                  value={form.file_url}
+                <input type="url" value={form.file_url}
                   onChange={e => setForm({ ...form, file_url: e.target.value })}
-                  placeholder="https://..."
-                />
+                  placeholder="https://..." />
               </label>
 
               <label className="filePick">
                 <Upload size={18} /> Choose PDF / File
-                <input
-                  type="file"
-                  accept=".pdf,.png,.jpg,.jpeg,.webp,.mp4"
-                  onChange={e => setFile(e.target.files?.[0] || null)}
-                />
+                <input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.mp4"
+                  onChange={e => setFile(e.target.files?.[0] || null)} />
                 {file && <small>{file.name}</small>}
               </label>
 
