@@ -22,6 +22,7 @@ type Enrollment = {
   status: 'pending' | 'approved' | 'rejected';
   fee_amount: number;
   payment_method: string | null;
+  is_removed?: boolean;
 };
 
 const styles = {
@@ -91,12 +92,14 @@ export default function Courses() {
     }
 
     setLoading(true);
+
     const { data: sessionData } = await supabase.auth.getSession();
     const user = sessionData.session?.user;
 
     if (!user) {
       setUserId('');
       setCourses([]);
+      setEnrollments([]);
       setLoading(false);
       setMessage('Please login to view courses.');
       return;
@@ -110,7 +113,10 @@ export default function Courses() {
       .eq('id', user.id)
       .maybeSingle();
 
-    const admin = profile?.role === 'admin' || profile?.role === 'super_admin';
+    const admin =
+      profile?.role === 'admin' ||
+      profile?.role === 'super_admin';
+
     setIsAdmin(admin);
 
     const { data: courseData, error: courseError } = await supabase
@@ -131,8 +137,11 @@ export default function Courses() {
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (enrollmentError) setMessage(enrollmentError.message);
-    else setEnrollments((enrollmentData || []) as Enrollment[]);
+    if (enrollmentError) {
+      setMessage(enrollmentError.message);
+    } else {
+      setEnrollments((enrollmentData || []) as Enrollment[]);
+    }
 
     setLoading(false);
   }
@@ -154,8 +163,9 @@ export default function Courses() {
       p_course_id: course.id
     });
 
-    if (error) setMessage(error.message);
-    else {
+    if (error) {
+      setMessage(error.message);
+    } else {
       setMessage(
         course.course_type === 'free'
           ? 'Free course enrollment successful!'
@@ -183,7 +193,10 @@ export default function Courses() {
       return;
     }
 
-    if (courseImage && !['image/jpeg', 'image/png', 'image/webp'].includes(courseImage.type)) {
+    if (
+      courseImage &&
+      !['image/jpeg', 'image/png', 'image/webp'].includes(courseImage.type)
+    ) {
       setMessage('Please choose a JPG, PNG or WEBP image.');
       return;
     }
@@ -210,7 +223,7 @@ export default function Courses() {
         });
 
       if (uploadError) {
-        setMessage(`Image upload failed: ${uploadError.message}. Please run the Course Images SQL setup first.`);
+        setMessage(`Image upload failed: ${uploadError.message}`);
         setSaving(false);
         return;
       }
@@ -248,7 +261,10 @@ export default function Courses() {
     setSaving(false);
   }
 
-  async function updateEnrollment(id: string, status: 'approved' | 'rejected') {
+  async function updateEnrollment(
+    id: string,
+    status: 'approved' | 'rejected'
+  ) {
     if (!supabase) return;
 
     setSaving(true);
@@ -259,9 +275,58 @@ export default function Courses() {
       .update({ status })
       .eq('id', id);
 
-    if (error) setMessage(error.message);
-    else {
+    if (error) {
+      setMessage(error.message);
+    } else {
       setMessage(`Enrollment ${status} successfully.`);
+      await loadData();
+    }
+
+    setSaving(false);
+  }
+
+  async function removeStudent(item: Enrollment) {
+    if (!supabase) return;
+
+    const confirmed = window.confirm(
+      'Is student ko is course se remove karna hai? Purana enrollment record safe rahega.'
+    );
+
+    if (!confirmed) return;
+
+    setSaving(true);
+    setMessage('');
+
+    const { error } = await supabase
+      .from('enrollments')
+      .update({ is_removed: true })
+      .eq('id', item.id);
+
+    if (error) {
+      setMessage(`Remove failed: ${error.message}`);
+    } else {
+      setMessage('Student course se remove ho gaya. Record محفوظ hai.');
+      await loadData();
+    }
+
+    setSaving(false);
+  }
+
+  async function restoreStudent(item: Enrollment) {
+    if (!supabase) return;
+
+    setSaving(true);
+    setMessage('');
+
+    const { error } = await supabase
+      .from('enrollments')
+      .update({ is_removed: false })
+      .eq('id', item.id);
+
+    if (error) {
+      setMessage(`Restore failed: ${error.message}`);
+    } else {
+      setMessage('Student ko course mein restore kar diya gaya.');
       await loadData();
     }
 
@@ -278,8 +343,9 @@ export default function Courses() {
       .update({ is_active: !course.is_active })
       .eq('id', course.id);
 
-    if (error) setMessage(error.message);
-    else {
+    if (error) {
+      setMessage(error.message);
+    } else {
       setMessage(course.is_active ? 'Course deactivated.' : 'Course activated.');
       await loadData();
     }
@@ -293,7 +359,9 @@ export default function Courses() {
     return '#b45309';
   }
 
-  if (loading) return <div style={{ padding: 20 }}>Loading courses...</div>;
+  if (loading) {
+    return <div style={{ padding: 20 }}>Loading courses...</div>;
+  }
 
   if (!userId) {
     return (
@@ -303,6 +371,10 @@ export default function Courses() {
       </section>
     );
   }
+
+  const activeEnrollments = enrollments.filter(
+    item => item.is_removed !== true
+  );
 
   return (
     <section style={{ padding: 16, color: '#102c59' }}>
@@ -419,6 +491,65 @@ export default function Courses() {
         </div>
       )}
 
+      {isAdmin && (
+        <div style={styles.card}>
+          <h3 style={{ marginTop: 0 }}>📊 Enrollment Overview</h3>
+          <p style={{ color: '#64748b', marginTop: 0 }}>
+            Course-wise active student enrollment count
+          </p>
+
+          {courses.map(course => {
+            const list = activeEnrollments.filter(
+              item => item.course_id === course.id
+            );
+
+            const approved = list.filter(
+              item => item.status === 'approved'
+            ).length;
+
+            const pending = list.filter(
+              item => item.status === 'pending'
+            ).length;
+
+            const rejected = list.filter(
+              item => item.status === 'rejected'
+            ).length;
+
+            return (
+              <div key={course.id} style={{
+                borderTop: '1px solid #e5e7eb',
+                padding: '13px 0'
+              }}>
+                <strong>{course.title}</strong>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(2,minmax(0,1fr))',
+                  gap: 8,
+                  marginTop: 10
+                }}>
+                  <div style={{ background: '#eff6ff', padding: 10, borderRadius: 9 }}>
+                    <strong style={{ fontSize: 22 }}>{list.length}</strong>
+                    <div style={{ fontSize: 12 }}>Total Students</div>
+                  </div>
+                  <div style={{ background: '#f0fdf4', padding: 10, borderRadius: 9 }}>
+                    <strong style={{ fontSize: 22, color: '#15803d' }}>{approved}</strong>
+                    <div style={{ fontSize: 12 }}>Approved</div>
+                  </div>
+                  <div style={{ background: '#fffbeb', padding: 10, borderRadius: 9 }}>
+                    <strong style={{ fontSize: 22, color: '#b45309' }}>{pending}</strong>
+                    <div style={{ fontSize: 12 }}>Pending</div>
+                  </div>
+                  <div style={{ background: '#fef2f2', padding: 10, borderRadius: 9 }}>
+                    <strong style={{ fontSize: 22, color: '#dc2626' }}>{rejected}</strong>
+                    <div style={{ fontSize: 12 }}>Rejected</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       <h3>Available Courses</h3>
 
       {courses.filter(course => course.is_active).length === 0 && (
@@ -426,9 +557,14 @@ export default function Courses() {
       )}
 
       {courses.filter(course => course.is_active).map(course => {
-        const enrollment = enrollments.find(
-          item => item.course_id === course.id && item.student_id === userId
+        const enrollment = activeEnrollments.find(
+          item => item.course_id === course.id &&
+            item.student_id === userId
         );
+
+        const courseCount = activeEnrollments.filter(
+          item => item.course_id === course.id
+        ).length;
 
         return (
           <article key={course.id} style={styles.card}>
@@ -483,6 +619,12 @@ export default function Courses() {
 
             {course.description && <p>{course.description}</p>}
 
+            {isAdmin && (
+              <p style={{ fontWeight: 700, color: '#15803d' }}>
+                👥 {courseCount} students enrolled
+              </p>
+            )}
+
             {enrollment ? (
               <p style={{ color: statusColor(enrollment.status), fontWeight: 700 }}>
                 Enrollment: {enrollment.status.toUpperCase()}
@@ -512,7 +654,7 @@ export default function Courses() {
 
       {isAdmin && (
         <>
-          <h3 style={{ marginTop: 28 }}>Enrollment Requests</h3>
+          <h3 style={{ marginTop: 28 }}>👨‍🎓 Student Enrollment List</h3>
 
           {enrollments.length === 0 && (
             <div style={styles.card}>No enrollment requests yet.</div>
@@ -520,21 +662,43 @@ export default function Courses() {
 
           {enrollments.map(item => {
             const course = courses.find(c => c.id === item.course_id);
+            const removed = item.is_removed === true;
 
             return (
-              <div key={item.id} style={styles.card}>
+              <div key={item.id} style={{
+                ...styles.card,
+                opacity: removed ? 0.65 : 1,
+                borderColor: removed ? '#fca5a5' : '#e5e7eb'
+              }}>
                 <strong>{course?.title || 'Course'}</strong>
-                <p>Student ID: {item.student_id}</p>
+                <p style={{ overflowWrap: 'anywhere' }}>
+                  Student ID: {item.student_id}
+                </p>
                 <p>Fee: ₹{item.fee_amount}</p>
+
                 <p>
                   Status:{' '}
-                  <span style={{ color: statusColor(item.status), fontWeight: 700 }}>
+                  <span style={{
+                    color: statusColor(item.status),
+                    fontWeight: 700
+                  }}>
                     {item.status.toUpperCase()}
                   </span>
                 </p>
 
-                {item.status === 'pending' && (
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {removed && (
+                  <p style={{ color: '#dc2626', fontWeight: 700 }}>
+                    REMOVED FROM COURSE
+                  </p>
+                )}
+
+                {!removed && item.status === 'pending' && (
+                  <div style={{
+                    display: 'flex',
+                    gap: 8,
+                    flexWrap: 'wrap',
+                    marginBottom: 10
+                  }}>
                     <button
                       style={{ ...styles.button, background: '#15803d' }}
                       disabled={saving}
@@ -550,6 +714,24 @@ export default function Courses() {
                       Reject
                     </button>
                   </div>
+                )}
+
+                {removed ? (
+                  <button
+                    style={{ ...styles.button, background: '#15803d' }}
+                    disabled={saving}
+                    onClick={() => void restoreStudent(item)}
+                  >
+                    Restore Student
+                  </button>
+                ) : (
+                  <button
+                    style={{ ...styles.button, background: '#dc2626' }}
+                    disabled={saving}
+                    onClick={() => void removeStudent(item)}
+                  >
+                    Remove Student
+                  </button>
                 )}
               </div>
             );
