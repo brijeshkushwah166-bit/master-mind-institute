@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { BookOpen, GraduationCap, FileText, Video, Search, LogIn, LogOut, Upload, Plus, Trash2, ExternalLink, Globe, ShieldCheck, Menu, X, Download, Pencil } from 'lucide-react';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
-
+import Courses from './Courses';
 type Material = { id:string; title:string; description:string|null; class_level:string; subject:string; material_type:'lecture'|'notes'|'dpp'|'pyq'|'other'; file_url:string|null; storage_path:string|null; is_published:boolean; created_at:string };
 type Profile = { id:string; full_name:string|null; role:string };
 const copy = {
